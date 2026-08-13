@@ -119,6 +119,90 @@ test("amendments must keep their element keys", () => {
 });
 
 test("short values are not treated as facts", () => {
-  const facts = authoritativeFacts({ a: { b: "hi", c: "Providence" } });
-  assert.deepEqual(facts, ["Providence"]);
+  assert.deepEqual(authoritativeFacts({ a: { b: "hi", c: "id-7712" } }), ["id-7712"]);
+});
+
+test("vocabulary is not protected, data is", () => {
+  // Authoritative state is full of ordinary words that are also the correct
+  // English for a heading. Protecting those makes the check unusable as a gate:
+  // it flags "Contacts" in a panel title as a retyped fact.
+  const vocabulary = { a: { one: "contact", two: "Complete", three: "pipeline", four: "DNS records" } };
+  assert.deepEqual(authoritativeFacts(vocabulary), []);
+
+  const data = {
+    a: {
+      id: "contact-maria",
+      code: "priority-1",
+      host: "cresync-example.test",
+      street: "4180 Causeway Commerce Blvd",
+      task: "Send the Elm Street survey",
+      person: "Priya Raman",
+    },
+  };
+  assert.equal(authoritativeFacts(data).length, 6);
+});
+
+test("factShape 'any' restores the strict reading for single-word facts", () => {
+  const facts = authoritativeFacts({ a: { status: "Complete" } }, { factShape: "any" });
+  assert.deepEqual(facts, ["Complete"]);
+});
+
+test("a fact must match on word boundaries, not as a fragment", () => {
+  const state = { results: [{ result: { id: "contact-maria" } }] };
+  const innocent = {
+    root: "f",
+    elements: {
+      f: { type: "ResponseFrame", props: {} },
+      // Contains "contact-maria" only as part of a longer token.
+      t: { type: "Field", props: { label: "precontact-mariauniverse" } },
+    },
+  };
+  const outcome = evaluateSurface({ spec: innocent, state, config: { catalog: null } });
+  assert.equal(outcome.findings.filter((item) => item.rule === "grounding").length, 0);
+
+  const guilty = structuredClone(innocent);
+  guilty.elements.t.props.label = "Open contact-maria";
+  const caught = evaluateSurface({ spec: guilty, state, config: { catalog: null } });
+  assert.equal(caught.findings.filter((item) => item.rule === "grounding").length, 1);
+});
+
+test("a binding to the user's own draft input is not a phantom reference", () => {
+  // The correct way to route what the user typed into an operation. There is
+  // nothing for it to resolve against at compose time, and treating that as a
+  // defect flags every form the model builds.
+  const spec = {
+    root: "f",
+    elements: {
+      f: { type: "ResponseFrame", props: {} },
+      send: {
+        type: "Action",
+        props: {
+          label: "Save note",
+          action: {
+            kind: "operation",
+            operationId: "notes.create",
+            operationVersion: 1,
+            input: { body: { $state: "/draft/noteBody" }, id: { $state: "/results/0/result/id" } },
+          },
+        },
+      },
+    },
+  };
+  const state = { results: [{ result: { id: "contact-9912" } }] };
+  const outcome = evaluateSurface({
+    spec,
+    state,
+    config: { catalog: null, operations: [{ id: "notes.create", version: 1 }] },
+  });
+  assert.deepEqual(outcome.findings, []);
+
+  // A phantom authoritative path is still caught.
+  const phantom = structuredClone(spec);
+  phantom.elements.send.props.action.input.id = { $state: "/results/0/result/missing" };
+  const caught = evaluateSurface({
+    spec: phantom,
+    state,
+    config: { catalog: null, operations: [{ id: "notes.create", version: 1 }] },
+  });
+  assert.ok(caught.findings.some((item) => item.rule === "reference-unresolved"));
 });

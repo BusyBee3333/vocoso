@@ -32,11 +32,19 @@ const DEFAULTS = {
   writeForms: ["$bindState", "$setState", "$write"],
   forbiddenWritePaths: ["/data", "/runtime", "/state"],
   authoritativePathPrefixes: [],
+  // Paths that hold the user's in-progress input rather than system facts.
+  // A reference into one of these is correct and *cannot* resolve at compose
+  // time - the user has not typed anything yet - so it is never a phantom.
+  draftPathPrefixes: ["/draft", "/ui", "/local"],
   proseProps: [
     "title", "label", "text", "description", "placeholder", "empty",
     "caption", "subtitle", "heading", "summary", "helpText", "submitLabel",
   ],
   minFactLength: 6,
+  // "data-like" (default) protects only values that look like data rather than
+  // vocabulary; "any" protects every string over minFactLength. See
+  // looksLikeData() for why the default is not "any".
+  factShape: "data-like",
   action: {
     prop: "action",
     kindKey: "kind",
@@ -122,22 +130,58 @@ export function collectWrites(spec, config) {
 }
 
 /**
- * Strings from authoritative state that a surface must reference rather than
- * retype. Short values are excluded: "3" appearing in a label is a coincidence,
- * a 14-character address is not.
+ * Does this value look like *data*, or like *vocabulary*?
+ *
+ * This distinction decides whether the grounding check is usable as a gate.
+ * Authoritative state is full of ordinary words - "contact", "pipeline",
+ * "Complete", "activity" - that are also the correct English for a heading or
+ * a button. Protecting those means flagging "Contacts" in a panel title as a
+ * retyped fact, which is wrong and, worse, trains people to ignore the check.
+ *
+ * Real data almost always carries a marker that ordinary prose does not: a
+ * digit, an identifier separator, an address-like structure, or simply enough
+ * length that coincidence is implausible. Requiring one of those keeps every
+ * identifier, code, price, date, address, phone number, email, and proper
+ * noun phrase, and drops the dictionary.
+ *
+ * The cost is real and worth naming: a single-word value that genuinely was
+ * retyped - a status of "Complete" written into a label - is not caught. Set
+ * `factShape: "any"` when your facts are single words and you would rather
+ * have the false positives.
  */
-export function authoritativeFacts(state, { minFactLength = DEFAULTS.minFactLength } = {}) {
+export function looksLikeData(value) {
+  const text = String(value).trim();
+  if (/\d/.test(text)) return true;                       // ids, prices, dates, counts
+  if (/[_/@]|[a-z0-9]-[a-z0-9]|\w\.\w/i.test(text)) return true; // slugs, emails, paths, hosts
+  if (text.length >= 20) return true;                      // too long to collide by accident
+  // Two or more capitalised words: a proper noun phrase, not a UI word.
+  const capitalised = text.split(/\s+/).filter((word) => /^[A-Z]/.test(word));
+  return capitalised.length >= 2;
+}
+
+/**
+ * Strings from authoritative state that a surface must reference rather than
+ * retype. Short values are excluded - "3" in a label is a coincidence, a
+ * 14-character address is not - and so, by default, are values that read as
+ * vocabulary rather than data.
+ */
+export function authoritativeFacts(state, {
+  minFactLength = DEFAULTS.minFactLength,
+  factShape = DEFAULTS.factShape,
+} = {}) {
   const facts = new Set();
+  const keep = (text) => {
+    if (text.length < minFactLength) return;
+    if (factShape !== "any" && !looksLikeData(text)) return;
+    facts.add(text);
+  };
   const collect = (value) => {
     if (Array.isArray(value)) { value.forEach(collect); return; }
     if (!isRecord(value)) return;
     for (const child of Object.values(value)) {
-      if (typeof child === "string") {
-        const trimmed = child.trim();
-        if (trimmed.length >= minFactLength) facts.add(trimmed);
-      } else if (typeof child === "number" && String(child).length >= minFactLength) {
-        facts.add(String(child));
-      } else collect(child);
+      if (typeof child === "string") keep(child.trim());
+      else if (typeof child === "number") keep(String(child));
+      else collect(child);
     }
   };
   collect(state);
@@ -168,9 +212,14 @@ function checkRoot(spec, elements, config) {
 
 function checkReferences(spec, state, config) {
   const prefixes = config.authoritativePathPrefixes ?? DEFAULTS.authoritativePathPrefixes;
+  const draftPrefixes = config.draftPathPrefixes ?? DEFAULTS.draftPathPrefixes;
   const findings = [];
   for (const reference of collectReferences(spec, config)) {
     if (!reference.target.startsWith("/")) continue; // relative item refs resolve at render time
+    // A binding to the user's own draft input is the correct way to route what
+    // they typed into an operation. It has nothing to resolve against yet.
+    if (draftPrefixes.some((prefix) => reference.target === prefix
+      || reference.target.startsWith(`${prefix}/`))) continue;
     if (prefixes.length && !prefixes.some((prefix) => reference.target.startsWith(prefix))) {
       findings.push(finding("reference-scope", `${reference.at}: ${reference.form} "${reference.target}" is outside the authoritative state`, reference));
       continue;
@@ -182,6 +231,26 @@ function checkReferences(spec, state, config) {
   return findings;
 }
 
+/**
+ * Substring containment, but only on word boundaries: "contact" must not match
+ * inside "contacted", and a fact must appear as itself rather than as a
+ * fragment of a longer word.
+ */
+function containsFact(haystack, fact) {
+  let from = 0;
+  for (;;) {
+    const at = haystack.indexOf(fact, from);
+    if (at === -1) return false;
+    const before = at === 0 ? "" : haystack[at - 1];
+    const after = haystack[at + fact.length] ?? "";
+    const wordish = /[a-z0-9]/;
+    const startsClean = !wordish.test(before) || !wordish.test(fact[0]);
+    const endsClean = !wordish.test(after) || !wordish.test(fact[fact.length - 1]);
+    if (startsClean && endsClean) return true;
+    from = at + 1;
+  }
+}
+
 function checkGrounding(elements, facts, config) {
   const proseProps = new Set(config.proseProps ?? DEFAULTS.proseProps);
   const findings = [];
@@ -191,7 +260,7 @@ function checkGrounding(elements, facts, config) {
       if (!proseProps.has(prop) || typeof value !== "string") continue;
       const haystack = value.toLocaleLowerCase();
       for (const fact of facts) {
-        if (haystack.includes(fact.toLocaleLowerCase())) {
+        if (containsFact(haystack, fact.toLocaleLowerCase())) {
           findings.push(finding("grounding", `${key}.${prop} retypes the authoritative value "${fact}" instead of binding to it`, {
             element: key, prop, fact,
           }));
