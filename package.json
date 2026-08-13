@@ -1,16 +1,21 @@
 {
   "name": "vocoso",
   "version": "0.1.0",
-  "description": "Self-driving tests for voice and chat AI that render generative surfaces \u2014 no human oracle, with in-run recovery and opt-in LLM self-healing.",
+  "description": "Catches AI-generated UI that retypes your data instead of binding to it. Plus self-driving voice and chat conversation tests with no human oracle.",
   "keywords": [
+    "generative-ui",
+    "ai-generated-ui",
+    "grounding",
+    "hallucination",
+    "llm-testing",
+    "ag-ui",
+    "a2ui",
     "voice-ai",
     "realtime",
-    "webrtc",
-    "generative-ui",
-    "llm-testing",
+    "conversational-ai",
     "evals",
     "playwright",
-    "conversational-ai",
+    "webrtc",
     "self-healing",
     "qa"
   ],
@@ -30,7 +35,11 @@
       "import": "./src/index.mjs"
     },
     "./presets": "./src/transport/presets.mjs",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./assert": {
+      "types": "./types/assert.d.ts",
+      "import": "./src/assert.mjs"
+    }
   },
   "files": [
     "bin",

@@ -2,18 +2,74 @@
 
 [![ci](https://github.com/BusyBee3333/vocoso/actions/workflows/ci.yml/badge.svg)](https://github.com/BusyBee3333/vocoso/actions/workflows/ci.yml) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A520.11-brightgreen.svg)](package.json)
 
-**Vo**ice · **Co**nversation · **So**urce-of-truth — self-driving tests for voice and chat AI, including the generative surfaces they draw.
+**Your AI retyped your data, and every test passed.**
 
-VoCoSo holds a real, multi-turn conversation with your assistant, with no human in the loop: it synthesizes speech into a microphone your app genuinely opens, listens to the transport, watches the audio come back out, judges the UI the model composed, checks that your system actually changed, and — when something breaks — tells you what broke, whose fault it is, and what to change.
+When a model composes its own UI, it can put a fact on screen two ways. It can *bind* to the value your tool returned:
 
-MIT licensed. Zero runtime dependencies. Playwright is an optional peer.
+```json
+{ "type": "Field", "props": { "label": "Restaurant",
+  "value": { "$state": "/results/0/result/restaurant" } } }
+```
+
+Or it can *type it out*:
+
+```json
+{ "type": "Field", "props": { "label": "Restaurant: Northgate Supper Club" } }
+```
+
+Both render identical pixels. Both are valid JSON. Both pass a Zod schema — `label` is a string either way. Both pass a screenshot diff, an accessibility sweep, and a human glance. The second one is broken anyway: that name is now a string the model produced rather than a value from your system, so the moment the reservation changes the UI will confidently show the old one. If the model never got the value, a bound field renders blank and a retyped one renders something plausible.
+
+Nothing in the generative-UI stack checks this today. Schema validators check *shape*. VoCoSo checks *provenance* — and it needs no browser, no API key, and no model to do it:
 
 ```sh
-npm i -D vocoso playwright && npx playwright install chromium
-npx vocoso init
-npx vocoso doctor      # proves the rig works. No app, no API key, ~5 seconds.
-npx vocoso run vocoso/first-conversation.json
+npx vocoso check surface.json --state tool-results.json
 ```
+```
+FAIL  grounding: where.label retypes the authoritative value
+      "Northgate Supper Club" instead of binding to it
+```
+
+Or as one line in the test suite you already run:
+
+```js
+import { toBeGrounded } from "vocoso/assert";
+expect.extend({ toBeGrounded });
+
+test("the surface only shows facts it was given", () => {
+  expect(spec).toBeGrounded(toolResults, { catalog });
+});
+```
+
+**It also drives the conversation.** The same oracle runs at the end of a real multi-turn voice or chat session that VoCoSo holds with your app by itself — synthesized speech into a microphone your app genuinely opens, barge-in, measured audio at the output, evidence checks against your own database. That half is [further down](#the-voice-half).
+
+MIT licensed. Zero runtime dependencies. Playwright is an optional peer, needed only for the conversation half.
+
+```sh
+npm i -D vocoso                    # the oracle: no browser needed
+npm i -D playwright && npx playwright install chromium   # the conversation half
+npx vocoso init
+```
+
+## Does it actually catch anything?
+
+It was pointed at a production CRE copilot with **its own runtime grounding gate already in place** — one that rejects a literal in any declared fact slot, and whose system prompt tells the model "anything you retype is rejected and dropped from the view."
+
+Across 10 real surface fixtures and their amendments, VoCoSo returned exactly what that gate returns: **no findings**. It reproduces the host's own enforcement.
+
+Then one authoritative value per fixture was moved out of its bound slot and into a neighbouring `title` or `label` — the natural thing for a model to do when the strict slot rejects it:
+
+```
+CRESync runtime gate | VoCoSo oracle | case
+---------------------------------------------------
+ACCEPTED             | CAUGHT        | focus-today
+ACCEPTED             | CAUGHT        | maria-next-action
+ACCEPTED             | CAUGHT        | connect-verify-domain
+...                                    9 of 9
+```
+
+Every one rendered clean. The gate only guards slots it declared as fact slots; prose is not one of them. That is the hole, and it is not unique to that codebase — it is what every schema-shaped defence leaves open.
+
+The same exercise found two false-positive bugs in VoCoSo first, which is the honest reason to trust the number: see [`docs/precision.md`](docs/precision.md).
 
 ---
 
@@ -77,7 +133,9 @@ npx vocoso run examples/demo-app/scripts/catches-a-bug.json -c examples/demo-app
 
 The second run fails, for the right reason, with a fix attached. See [`examples/demo-app`](examples/demo-app) for the full list of defects you can switch on (`?bug=grounding`, `catalog`, `phantom`, `literal`, `silent`).
 
-## How the voice path works
+<a id="the-voice-half"></a>
+
+## The voice half
 
 Chromium's `--use-file-for-fake-audio-capture` loops one file for the whole browser lifetime. That is enough for a single canned utterance and useless for a conversation: no per-turn speech, no silence between turns, no barge-in.
 
@@ -241,6 +299,12 @@ assert(report.passed);
 // The surface oracle is useful entirely on its own — no browser, no model.
 const outcome = evaluateSurface({ spec, state: toolResults, config: { catalog } });
 ```
+
+## Related work
+
+- **[AIMock](https://github.com/CopilotKit/aimock)** (CopilotKit) mocks everything your agent talks to — LLMs, MCP, A2A, vector DBs, AG-UI streams — so CI is deterministic and free. It is a fixture *producer*; VoCoSo is an *oracle*. They compose: AIMock to make the input reproducible, VoCoSo to judge what the model did with it.
+- **[LangWatch Scenario](https://github.com/langwatch/scenario)**, **[VoiceTest](https://github.com/voicetestdev/voicetest)**, and the hosted voice-QA platforms drive your agent through its SDK, an API, or a phone line, and score with an LLM judge. VoCoSo drives the real browser client, which is the only place the microphone path, the playback attachment, and the autoplay policy exist — and scores structurally, so a run costs nothing to judge.
+- **promptfoo**, **DeepEval**, **Ragas** evaluate the text. Different layer; use them together with this.
 
 ## What this is not
 
