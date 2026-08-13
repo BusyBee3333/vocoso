@@ -1,5 +1,7 @@
 # VoCoSo
 
+[![ci](https://github.com/BusyBee3333/vocoso/actions/workflows/ci.yml/badge.svg)](https://github.com/BusyBee3333/vocoso/actions/workflows/ci.yml) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) [![node](https://img.shields.io/badge/node-%E2%89%A520.11-brightgreen.svg)](package.json)
+
 **Vo**ice · **Co**nversation · **So**urce-of-truth — self-driving tests for voice and chat AI, including the generative surfaces they draw.
 
 VoCoSo holds a real, multi-turn conversation with your assistant, with no human in the loop: it synthesizes speech into a microphone your app genuinely opens, listens to the transport, watches the audio come back out, judges the UI the model composed, checks that your system actually changed, and — when something breaks — tells you what broke, whose fault it is, and what to change.
