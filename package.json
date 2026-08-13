@@ -40,7 +40,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node --test",
     "lint": "node --check bin/vocoso.mjs && node scripts/syntax-check.mjs",
     "selftest": "node bin/vocoso.mjs doctor"
   },
