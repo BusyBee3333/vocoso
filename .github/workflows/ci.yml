@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit:
+    name: unit (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: ["20.x", "22.x", "24.x"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm install --no-audit --no-fund
+      # No browser, no network, no API key. If this needs either, it is misplaced.
+      - run: npm test
+      - name: version stays in step
+        run: node scripts/check-version.mjs
+
+  e2e:
+    name: end to end (demo app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      # The happy path must pass...
+      - name: happy path
+        run: node bin/vocoso.mjs run examples/demo-app/scripts/books-a-table.json -c examples/demo-app/vocoso.config.mjs
+      # ...and the deliberately broken build must fail, for the right reason.
+      - name: the oracle catches a planted defect
+        run: |
+          if node bin/vocoso.mjs run examples/demo-app/scripts/catches-a-bug.json \
+               -c examples/demo-app/vocoso.config.mjs > bug-run.log 2>&1; then
+            echo "::error::the planted grounding defect was not caught"
+            cat bug-run.log
+            exit 1
+          fi
+          grep -q "SURFACE_UNGROUNDED" bug-run.log \
+            || { echo "::error::run failed, but not for the planted reason"; cat bug-run.log; exit 1; }
+          echo "caught it"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vocoso-reports
+          path: examples/demo-app/reports/

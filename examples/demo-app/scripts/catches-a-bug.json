@@ -1,0 +1,11 @@
+{
+  "name": "catches-a-bug",
+  "description": "Point this at the demo with ?bug=grounding and watch the run fail for the right reason.",
+  "config": { "app": { "path": "/?bug=grounding" } },
+  "steps": [
+    {
+      "say": "Can you find me a table for two on Friday evening?",
+      "expect": { "responded": true, "surface": true }
+    }
+  ]
+}

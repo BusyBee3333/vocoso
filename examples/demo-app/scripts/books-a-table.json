@@ -1,0 +1,15 @@
+{
+  "name": "books-a-table",
+  "description": "The happy path: it answers, calls the tool, and renders a grounded surface.",
+  "steps": [
+    {
+      "say": "Can you find me a table for two on Friday evening?",
+      "expect": {
+        "responded": true,
+        "toolCalled": [{ "name": "reservations.search", "argumentsInclude": { "partySize": 2 } }],
+        "surface": { "usesComponents": ["Field", "Action"] },
+        "mentions": "found one table"
+      }
+    }
+  ]
+}

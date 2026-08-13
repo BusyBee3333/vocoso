@@ -1,0 +1,10 @@
+node_modules/
+.vocoso/
+vocoso-reports/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+coverage/
+examples/demo-app/reports/

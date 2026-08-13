@@ -1,0 +1,66 @@
+{
+  "name": "vocoso",
+  "version": "0.1.0",
+  "description": "Self-driving tests for voice and chat AI that render generative surfaces \u2014 no human oracle, with in-run recovery and opt-in LLM self-healing.",
+  "keywords": [
+    "voice-ai",
+    "realtime",
+    "webrtc",
+    "generative-ui",
+    "llm-testing",
+    "evals",
+    "playwright",
+    "conversational-ai",
+    "self-healing",
+    "qa"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "bin": {
+    "vocoso": "bin/vocoso.mjs"
+  },
+  "main": "src/index.mjs",
+  "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./src/index.mjs"
+    },
+    "./presets": "./src/transport/presets.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "types",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "lint": "node --check bin/vocoso.mjs && node scripts/syntax-check.mjs",
+    "selftest": "node bin/vocoso.mjs doctor"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BusyBee3333/vocoso.git"
+  },
+  "bugs": {
+    "url": "https://github.com/BusyBee3333/vocoso/issues"
+  },
+  "homepage": "https://github.com/BusyBee3333/vocoso#readme",
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
